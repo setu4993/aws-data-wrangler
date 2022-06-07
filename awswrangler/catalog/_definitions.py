@@ -188,6 +188,93 @@ def _csv_partition_definition(
         ]
     return definition
 
+def _legacy_delta_table_definition(
+     table: str,
+     path: str,
+     columns_types: Dict[str, str],
+     table_type: Optional[str],
+     partitions_types: Dict[str, str],
+     bucketing_info: Optional[Tuple[List[str], int]],
+     compression: Optional[str],
+ ) -> Dict[str, Any]:
+     if "_symlink_format_manifest" not in path:
+         _logger.warning(
+             "Location should typically have _symlink_format_manifest in the path. "
+             "Please ensure you have generated a manifest for Redshift for your Delta table and "
+             "specified the manifest path i.e. path/to/table/_symlink_format_manifest"
+         )
+
+     compressed: bool = compression is not None
+     return {
+         "Name": table,
+         "PartitionKeys": [{"Name": cname, "Type": dtype} for cname, dtype in partitions_types.items()],
+         "TableType": "EXTERNAL_TABLE" if table_type is None else table_type,
+         "Parameters": {"classification": "parquet", "compressionType": str(compression).lower(), "typeOfData": "file"},
+         "StorageDescriptor": {
+             "Columns": [{"Name": cname, "Type": dtype} for cname, dtype in columns_types.items()],
+             "Location": path,
+             "InputFormat": "org.apache.hadoop.hive.ql.io.SymlinkTextInputFormat",
+             "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+             "Compressed": compressed,
+             "NumberOfBuckets": -1 if bucketing_info is None else bucketing_info[1],
+             "SerdeInfo": {
+                 "SerializationLibrary": "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe",
+                 "Parameters": {"serialization.format": "1"},
+             },
+             "BucketColumns": [] if bucketing_info is None else bucketing_info[0],
+             "StoredAsSubDirectories": False,
+             "SortColumns": [],
+             "Parameters": {
+                 "CrawlerSchemaDeserializerVersion": "1.0",
+                 "classification": "parquet",
+                 "compressionType": str(compression).lower(),
+                 "typeOfData": "file",
+             },
+         },
+     }
+
+
+def _legacy_delta_partition_definition(
+     location: str,
+     values: List[str],
+     bucketing_info: Optional[Tuple[List[str], int]],
+     compression: Optional[str],
+     columns_types: Optional[Dict[str, str]],
+     partitions_parameters: Optional[Dict[str, str]],
+ ) -> Dict[str, Any]:
+
+     if "_symlink_format_manifest" not in location:
+         _logger.warning(
+             "Location should typically have _symlink_format_manifest in the path. "
+             "Please ensure you have generated a manifest for Redshift for your Delta table and "
+             "specified the manifest path i.e. path/to/table/_symlink_format_manifest"
+         )
+
+     compressed: bool = compression is not None
+     definition: Dict[str, Any] = {
+         "StorageDescriptor": {
+             "InputFormat": "org.apache.hadoop.hive.ql.io.SymlinkTextInputFormat",
+             "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+             "Location": location,
+             "Compressed": compressed,
+             "SerdeInfo": {
+                 "Parameters": {"serialization.format": "1"},
+                 "SerializationLibrary": "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe",
+             },
+             "StoredAsSubDirectories": False,
+             "NumberOfBuckets": -1 if bucketing_info is None else bucketing_info[1],
+             "BucketColumns": [] if bucketing_info is None else bucketing_info[0],
+         },
+         "Values": values,
+         "Parameters": {} if partitions_parameters is None else partitions_parameters,
+     }
+     if columns_types is not None:
+         definition["StorageDescriptor"]["Columns"] = [
+             {"Name": cname, "Type": dtype} for cname, dtype in columns_types.items()
+         ]
+
+     return definition
+
 
 def _json_table_definition(
     table: str,
